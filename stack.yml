@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+
+  spark-master:
+    image: bitnami/spark:latest
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  spark-worker:
+    image: bitnami/spark:latest
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    deploy:
+      mode: global
+
+  hadoop-namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    environment:
+      - CLUSTER_NAME=enem-cluster
+    volumes:
+      - hdfs-namenode:/hadoop/dfs/name
+    ports:
+      - "9870:9870"
+
+  hadoop-datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    environment:
+      - CLUSTER_NAME=enem-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:9000
+    volumes:
+      - hdfs-datanode:/hadoop/dfs/data
+    deploy:
+      mode: global
+
+  spark-job:
+    image: enem-spark-job:latest
+    volumes:
+      - ./data:/data
+      - ./entrypoint.sh:/entrypoint.sh
+    depends_on:
+      - spark-master
+      - spark-worker
+      - hadoop-namenode
+      - hadoop-datanode
+    command: >
+      /opt/bitnami/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --conf spark.driver.bindAddress=0.0.0.0
+      --conf spark.network.timeout=600s
+      --conf spark.executor.heartbeatInterval=60s
+      --conf spark.python.worker.reuse=true
+      --conf spark.executorEnv.PYSPARK_PYTHON=python3
+      /opt/spark/jobs/main.py
+
+volumes:
+  hdfs-namenode:
+  hdfs-datanode:
