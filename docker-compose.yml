@@ -1,4 +1,4 @@
-# stack.yml - Infraestrutura Big Data com Spark + HDFS no Docker Swarm
+# docker-compose.yml - Ambiente local para testes e desenvolvimento
 
 version: '3.8'
 
@@ -6,23 +6,22 @@ services:
 
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
     environment:
       - CLUSTER_NAME=enem-cluster
       - HDFS_CONF_dfs_permissions=false
     ports:
-      - "9870:9870"   # Web UI
-      - "9000:9000"   # RPC
-      - "8020:8020"   # HDFS URI
+      - "9870:9870"
+      - "9000:9000"
+      - "8020:8020"
     volumes:
       - hdfs-namenode:/hadoop/dfs/name
     networks:
       - hadoop
-    deploy:
-      placement:
-        constraints: [node.role == manager]
 
   datanode:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
     environment:
       - CLUSTER_NAME=enem-cluster
       - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
@@ -35,13 +34,15 @@ services:
 
   spark-master:
     image: bitnami/spark:latest
+    container_name: spark-master
     environment:
       - SPARK_MODE=master
       - SPARK_RPC_AUTHENTICATION=no
       - SPARK_RPC_ENCRYPTION=no
+      - SPARK_SUBMIT_OPTIONS=--conf spark.jars.ivy=/tmp/.ivy2
     ports:
-      - "8080:8080"   # Web UI
-      - "7077:7077"   # Spark master
+      - "8080:8080"
+      - "7077:7077"
     networks:
       - hadoop
     depends_on:
@@ -49,9 +50,11 @@ services:
 
   spark-worker:
     image: bitnami/spark:latest
+    container_name: spark-worker
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_SUBMIT_OPTIONS=--conf spark.jars.ivy=/tmp/.ivy2
     networks:
       - hadoop
     depends_on:
@@ -59,6 +62,7 @@ services:
 
   jupyter:
     image: jupyter/pyspark-notebook:latest
+    container_name: jupyter
     ports:
       - "8888:8888"
     volumes:
