@@ -8,42 +8,61 @@ services:
       - SPARK_MODE=master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - HADOOP_USER_NAME=root
     ports:
       - "8080:8080"
       - "7077:7077"
     deploy:
       placement:
         constraints: [node.role == manager]
+    networks:
+      - hadoop
 
   spark-worker:
     image: bitnami/spark:latest
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
+      - HADOOP_USER_NAME=root
     deploy:
       mode: global
+    networks:
+      - hadoop
 
   hadoop-namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
     environment:
       - CLUSTER_NAME=enem-cluster
+      - HDFS_CONF_dfs_permissions=false
     volumes:
       - hdfs-namenode:/hadoop/dfs/name
     ports:
-      - "9870:9870"
+      - "9870:9870"  # Web UI
+      - "8020:8020"  # RPC
+    networks:
+      - hadoop
 
   hadoop-datanode:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     environment:
       - CLUSTER_NAME=enem-cluster
-      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:9000
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:8020
+      - HDFS_CONF_dfs_datanode_address=0.0.0.0:9866
+      - HDFS_CONF_dfs_datanode_http_address=0.0.0.0:9864
+      - HDFS_CONF_dfs_datanode_ipc_address=0.0.0.0:9867
+      - HDFS_CONF_dfs_permissions=false
+      - HDFS_CONF_dfs_data_dir=file:///hadoop/dfs/data
     volumes:
       - hdfs-datanode:/hadoop/dfs/data
     deploy:
       mode: global
+    networks:
+      - hadoop
 
   spark-job:
     image: enem-spark-job:latest
+    environment:
+      - HADOOP_USER_NAME=root
     volumes:
       - ./data:/data
       - ./entrypoint.sh:/entrypoint.sh
@@ -52,16 +71,14 @@ services:
       - spark-worker
       - hadoop-namenode
       - hadoop-datanode
-    command: >
-      /opt/bitnami/spark/bin/spark-submit
-      --master spark://spark-master:7077
-      --conf spark.driver.bindAddress=0.0.0.0
-      --conf spark.network.timeout=600s
-      --conf spark.executor.heartbeatInterval=60s
-      --conf spark.python.worker.reuse=true
-      --conf spark.executorEnv.PYSPARK_PYTHON=python3
-      /opt/spark/jobs/main.py
+    command: ["/bin/bash", "/entrypoint.sh"]
+    networks:
+      - hadoop
 
 volumes:
   hdfs-namenode:
   hdfs-datanode:
+
+networks:
+  hadoop:
+    driver: overlay

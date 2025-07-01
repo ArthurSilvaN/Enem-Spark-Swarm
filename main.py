@@ -4,6 +4,7 @@ import zipfile
 import time
 import logging
 import glob
+import subprocess
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, LongType, IntegerType, StringType, DoubleType
@@ -19,7 +20,7 @@ start_total = time.time()
 
 # Configuração geral
 YEARS = [2020, 2021, 2023]
-HDFS_URI = "hdfs://hadoop-namenode:9870"
+HDFS_URI = "hdfs://hadoop-namenode:8020"
 LOCAL_PARQUET_BASE = "/data/enem_clean"
 LOCAL_RESULTS_BASE = "/data/enem_results"
 
@@ -32,34 +33,49 @@ def download_and_extract(year):
     if not os.path.exists(extract_dir):
         os.makedirs(extract_dir, exist_ok=True)
 
-    logger.info(f"Baixando {year} de {url}")
+    logger.info(f"Verificando arquivo {local_zip} para o ano {year}")
+    
+    # Encontrar o arquivo CSV
+    csv_pattern = os.path.join(extract_dir, "DADOS", "MICRODADOS_ENEM_*.csv")
+    csv_files = glob.glob(csv_pattern)
 
-    session = requests.Session()
-    retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
-    session.mount("https://", HTTPAdapter(max_retries=retries))
+    if not csv_files:
+        raise FileNotFoundError(f"Nenhum MICRODADOS_ENEM encontrado em {csv_pattern}")
+    
+    local_csv_path = csv_files[0]
+    logger.info(f"CSV localizado: {local_csv_path}")
+    
+    if not os.path.exists(local_csv_path):
+        logger.info(f"Baixando {year} de {url}")
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    }
+        session = requests.Session()
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
+        session.mount("https://", HTTPAdapter(max_retries=retries))
 
-    try:
-        with session.get(url, stream=True, headers=headers, timeout=60) as r:
-            r.raise_for_status()
-            with open(local_zip, "wb") as f:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Erro ao baixar {url}: {e}")
-        raise
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        }
 
-    logger.info(f"Extraindo {local_zip}")
-    with zipfile.ZipFile(local_zip, 'r') as zip_ref:
-        zip_ref.extractall(extract_dir)
+        try:
+            with session.get(url, stream=True, headers=headers, timeout=60) as r:
+                r.raise_for_status()
+                with open(local_zip, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro ao baixar {url}: {e}")
+            raise
+        logger.info(f"Extraindo {local_zip}")
+        with zipfile.ZipFile(local_zip, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+    else:
+        logger.info(f"Arquivo {local_zip} já existe, pulando download.")
 
-    os.remove(local_zip)
 
-    # Encontrar o arquivo correto
+    #os.remove(local_zip)
+
+    # Encontrar o arquivo CSV
     csv_pattern = os.path.join(extract_dir, "DADOS", "MICRODADOS_ENEM_*.csv")
     csv_files = glob.glob(csv_pattern)
 
@@ -69,7 +85,22 @@ def download_and_extract(year):
     local_csv_path = csv_files[0]
     logger.info(f"CSV localizado: {local_csv_path}")
 
-    return local_csv_path
+    # Caminho no HDFS
+    hdfs_csv_path = f"/user/enem/csv_raw/{year}/MICRODADOS_ENEM_{year}.csv"
+    logger.info(f"Enviando CSV para HDFS em {hdfs_csv_path}")
+
+    # Copia arquivo local para o HDFS com subprocess (modo simples)
+    subprocess.run(["hdfs", "dfs", "-mkdir", "-p", os.path.dirname(hdfs_csv_path)], check=False)
+    subprocess.run(["hdfs", "dfs", "-put", "-f", local_csv_path, hdfs_csv_path], check=True)
+    
+    csv_pattern = os.path.join(extract_dir, "DADOS", "MICRODADOS_ENEM_*.csv")
+    csv_files = glob.glob(csv_pattern)
+    
+    local_csv_path = csv_files[0]
+    logger.info(f"TESTANDO SE TA VENDO O CSV {local_csv_path}")
+     
+    return hdfs_csv_path
+
 
 # Spark Session
 spark = SparkSession.builder \
@@ -118,9 +149,10 @@ for year in YEARS:
     t0 = time.time()
 
     # ETAPA 1 - DOWNLOAD E LEITURA
-    csv_path = download_and_extract(year)
-    logger.info(f"Lendo {csv_path}")
-    df = spark.read.csv(csv_path, sep=";", header=True, encoding="ISO-8859-1", schema=schema)
+    hdfs_csv_path = download_and_extract(year)
+    logger.info(f"Lendo CSV via HDFS: {hdfs_csv_path}")
+    df = spark.read.csv(f"{HDFS_URI}{hdfs_csv_path}", sep=";", header=True, encoding="ISO-8859-1", schema=schema)
+
     df.repartition(10).write.mode("overwrite").option("header", True).csv(f"{HDFS_URI}/user/enem/csv/{year}")
     df = df.withColumn("Q006_VALOR", renda_valor(F.col("Q006")))
     df = df.withColumn("REGIAO", uf_regiao(F.col("SG_UF_PROVA"))).dropna(subset=["NU_NOTA_MT", "Q006_VALOR"])
