@@ -22,17 +22,14 @@ O principal objetivo deste projeto é processar e analisar grandes volumes de da
 - **Formato:** Arquivos CSV compactados em ZIP.
 
 ### 2.2 How to obtain the data
-
-#### Sample:
-- Localizado em: `datasample/MICRODADOS_ENEM_SAMPLE.csv`
-- Contém 1MB com dados de 2020.
-
 #### Dataset completo:
 ```bash
 wget https://download.inep.gov.br/microdados/microdados_enem_2020.zip
 wget https://download.inep.gov.br/microdados/microdados_enem_2021.zip
 wget https://download.inep.gov.br/microdados/microdados_enem_2023.zip
 unzip microdados_enem_2020.zip -d data/enem_data/2020/
+unzip microdados_enem_2021.zip -d data/enem_data/2021/
+unzip microdados_enem_2023.zip -d data/enem_data/2023/
 ```
 
 ## 3. How to install and run
@@ -42,9 +39,11 @@ unzip microdados_enem_2020.zip -d data/enem_data/2020/
 ### 3.1 Quick start
 
 ```bash
-docker compose up --build --scale spark-worker=1 --scale datanode=1 -d
-docker exec -it <nome_container_spark-job> python3 /opt/spark/jobs/main.py
+docker build -t enem-spark-job -f docker/Dockerfile .
+
+docker-compose up --scale spark-worker=2 --scale datanode=1 -d 
 ```
+Spark-Worker e Datanode definem a quantidade de nós com spark-work e datanode
 
 ### 3.2 Full dataset
 
