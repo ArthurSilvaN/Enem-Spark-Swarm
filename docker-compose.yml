@@ -8,11 +8,11 @@ services:
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - HADOOP_USER_NAME=root
-    volumes:
-      - ./data:/data
     ports:
       - "8080:8080"
       - "7077:7077"
+    volumes:
+      - ./data:/data
     networks:
       - hadoop
 
@@ -35,11 +35,11 @@ services:
       - CLUSTER_NAME=test-cluster
       - HDFS_CONF_dfs_permissions=false
       - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
-    volumes:
-      - namenode_data:/hadoop/dfs/name
     ports:
       - "9870:9870"
       - "8020:8020"
+    volumes:
+      - namenode_data:/hadoop/dfs/name
     networks:
       - hadoop
 
@@ -53,8 +53,6 @@ services:
       - HDFS_CONF_dfs_datanode_ipc_address=0.0.0.0:9867
     depends_on:
       - namenode
-    volumes:
-      - datanode_data:/hadoop/dfs/data
     networks:
       - hadoop
 
@@ -76,7 +74,6 @@ services:
 
 volumes:
   namenode_data:
-  datanode_data:
 
 networks:
   hadoop:

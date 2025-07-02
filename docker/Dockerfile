@@ -29,6 +29,7 @@ RUN wget https://downloads.apache.org/hadoop/common/hadoop-3.3.6/hadoop-3.3.6.ta
 COPY docker/requirements.txt /tmp/
 COPY data/enem_data/2020/DADOS/MICRODADOS_ENEM_2020.csv /data/enem_data/2020/DADOS/MICRODADOS_ENEM_2020.csv
 COPY data/enem_data/2021/DADOS/MICRODADOS_ENEM_2021.csv /data/enem_data/2021/DADOS/MICRODADOS_ENEM_2021.csv
+COPY data/enem_data/2023/DADOS/MICRODADOS_ENEM_2023.csv /data/enem_data/2023/DADOS/MICRODADOS_ENEM_2023.csv
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Copia o job principal

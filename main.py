@@ -29,75 +29,102 @@ def download_and_extract(year):
     url = f"https://download.inep.gov.br/microdados/microdados_enem_{year}.zip"
     local_zip = f"enem{year}.zip"
     extract_dir = f"/data/enem_data/{year}"
+    csv_pattern = os.path.join(extract_dir, "**", "MICRODADOS_ENEM_*.csv")
+    hdfs_csv_path = f"/user/enem/csv_raw/{year}/MICRODADOS_ENEM_{year}.csv"
 
-    if not os.path.exists(local_zip):
-        os.makedirs(extract_dir, exist_ok=True)
+    os.makedirs(extract_dir, exist_ok=True)
+    logger.info(f"🔍 Verificando presença local dos arquivos do ENEM {year}")
 
-    logger.info(f"Verificando arquivo {local_zip} para o ano {year}")
-    
-    csv_pattern = os.path.join(extract_dir, "DADOS", "MICRODADOS_ENEM_*.csv")
-    csv_files = glob.glob(csv_pattern)
-    local_csv_path = csv_files[0]
-    if not os.path.exists(local_csv_path):
-        if not os.path.exists(local_zip):
-            logger.info(f"Baixando {year} de {url}")
+    # Etapa 1: procurar CSV local já extraído
+    csv_files = glob.glob(csv_pattern, recursive=True)
+    if csv_files:
+        local_csv_path = csv_files[0]
+        logger.info(f"📂 CSV local encontrado: {local_csv_path}")
 
-            session = requests.Session()
-            retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
-            session.mount("https://", HTTPAdapter(max_retries=retries))
-
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            }
-
-            try:
-                with session.get(url, stream=True, headers=headers, timeout=60) as r:
-                    r.raise_for_status()
-                    with open(local_zip, "wb") as f:
-                        for chunk in r.iter_content(chunk_size=1024 * 1024):
-                            if chunk:
-                                f.write(chunk)
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Erro ao baixar {url}: {e}")
-                raise
-        else:
-            logger.info(f"Arquivo {local_zip} já existe, pulando extração.")
-        
-        logger.info(f"Extraindo {local_zip}")
+    # Etapa 2: se CSV não existir, mas ZIP sim ➝ extrair
+    elif os.path.exists(local_zip):
+        logger.info(f"📦 ZIP local encontrado: {local_zip}, extraindo...")
         with zipfile.ZipFile(local_zip, 'r') as zip_ref:
             zip_ref.extractall(extract_dir)
-            
         os.remove(local_zip)
+
+        csv_files = glob.glob(csv_pattern, recursive=True)
+        if not csv_files:
+            raise FileNotFoundError(f"❌ Nenhum MICRODADOS_ENEM encontrado após extrair {local_zip}")
+        local_csv_path = csv_files[0]
+        logger.info(f"📂 CSV extraído com sucesso: {local_csv_path}")
+
+    # Etapa 3: se nem CSV nem ZIP ➝ baixar ZIP e extrair
     else:
-        logger.info(f"Arquivo {local_csv_path} já existe, pulando download e extração.")
-            
-    
+        logger.info(f"⬇️ Nenhum CSV ou ZIP encontrado. Baixando de {url}")
+        session = requests.Session()
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
+        session.mount("https://", HTTPAdapter(max_retries=retries))
+        headers = {"User-Agent": "Mozilla/5.0"}
 
-    # Encontrar o arquivo CSV
-    csv_pattern = os.path.join(extract_dir, "DADOS", "MICRODADOS_ENEM_*.csv")
-    csv_files = glob.glob(csv_pattern)
+        try:
+            with session.get(url, stream=True, headers=headers, timeout=60) as r:
+                r.raise_for_status()
+                with open(local_zip, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Erro ao baixar {url}: {e}")
+            raise
 
-    if not csv_files:
-        raise FileNotFoundError(f"Nenhum MICRODADOS_ENEM encontrado em {csv_pattern}")
-    
-    local_csv_path = csv_files[0]
-    logger.info(f"CSV localizado: {local_csv_path}")
+        logger.info(f"📦 Extraindo {local_zip}")
+        with zipfile.ZipFile(local_zip, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+        os.remove(local_zip)
 
-    # Caminho no HDFS
-    hdfs_csv_path = f"/user/enem/csv_raw/{year}/MICRODADOS_ENEM_{year}.csv"
-    logger.info(f"Enviando CSV para HDFS em {hdfs_csv_path}")
+        csv_files = glob.glob(csv_pattern, recursive=True)
+        if not csv_files:
+            raise FileNotFoundError(f"❌ Nenhum MICRODADOS_ENEM encontrado após baixar e extrair {year}")
+        local_csv_path = csv_files[0]
+        logger.info(f"📂 CSV extraído com sucesso: {local_csv_path}")
 
-    # Copia arquivo local para o HDFS com subprocess (modo simples)
-    subprocess.run(["hdfs", "dfs", "-mkdir", "-p", os.path.dirname(hdfs_csv_path)], check=False)
-    res = subprocess.run(["hdfs", "dfs", "-put", "-f", local_csv_path, hdfs_csv_path], capture_output=True, text=True)
+    # Agora que temos o CSV local, enviaremos para o HDFS
+    mkdirs_hierarchy(f"/user/enem/csv_raw/{year}")
+    logger.info(f"📤 Enviando CSV para HDFS: {hdfs_csv_path}")
+    copy_to_hdfs(local_csv_path, hdfs_csv_path)
 
-    if res.returncode != 0:
-        logger.error(f"❌ Falha ao enviar CSV para o HDFS:\n{res.stderr}")
-        raise RuntimeError("Erro ao executar hdfs dfs -put")
-    else:
-        logger.info("✅ CSV enviado para o HDFS com sucesso.")
-     
     return hdfs_csv_path
+
+
+def mkdirs_hierarchy(path_str):
+    """Cria todos os diretórios pai no HDFS usando API Hadoop"""
+    fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
+
+    parts = path_str.strip("/").split("/")
+    current_path = ""
+
+    for part in parts:
+        current_path += f"/{part}"
+        path_obj = spark._jvm.org.apache.hadoop.fs.Path(current_path)
+
+        if not fs.exists(path_obj):
+            created = fs.mkdirs(path_obj)
+            if created:
+                logger.info(f"✅ Criado diretório: {current_path}")
+            else:
+                logger.error(f"❌ Falha ao criar diretório: {current_path}")
+                raise RuntimeError(f"Erro ao criar {current_path}")
+        else:
+            logger.info(f"📁 Já existe: {current_path}")
+            
+
+def copy_to_hdfs(local_path, hdfs_path):
+    fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
+    src_path = spark._jvm.org.apache.hadoop.fs.Path(f"file://{local_path}")
+    dst_path = spark._jvm.org.apache.hadoop.fs.Path(hdfs_path)
+
+    if fs.exists(dst_path):
+        logger.warning(f"⚠️ Arquivo já existe em {hdfs_path}, sobrescrevendo.")
+        fs.delete(dst_path, True)
+
+    fs.copyFromLocalFile(False, True, src_path, dst_path)
+    logger.info(f"✅ Arquivo copiado via API Hadoop: {hdfs_path}")
 
 
 # Spark Session
@@ -106,7 +133,9 @@ spark = SparkSession.builder \
     .master("spark://spark-master:7077") \
     .config("spark.executor.memory", "2g") \
     .config("spark.driver.memory", "2g") \
+    .config("spark.hadoop.fs.defaultFS", "hdfs://namenode:8020") \
     .getOrCreate()
+
 
 # Schema enxuto
 schema = StructType([
@@ -173,13 +202,36 @@ logger.info("Executando análises...")
 # 1. Média por UF/ano
 df_uf = df_all.groupBy("ANO", "SG_UF_PROVA").agg(F.avg("NU_NOTA_MT").alias("MEDIA_MT"))
 
-# 2. Correlação renda vs nota por ano
+# 2. Correlação renda vs nota por ano (com verificação)
 correlacoes = []
 for year in YEARS:
     df_y = df_all.filter(F.col("ANO") == year)
-    corr = df_y.stat.corr("Q006_VALOR", "NU_NOTA_MT")
+    count = df_y.count()
+    if count < 2:
+        logger.warning(f"⚠️ Dados insuficientes para calcular correlação em {year} (apenas {count} registros)")
+        corr = None
+    else:
+        stats = df_y.selectExpr("stddev(Q006_VALOR) as std_q006", "stddev(NU_NOTA_MT) as std_mt").collect()[0]
+        if stats["std_q006"] == 0 or stats["std_mt"] == 0:
+            logger.warning(f"⚠️ Desvio padrão zero em {year}, ignorando correlação")
+            corr = None
+        else:
+            try:
+                corr = df_y.stat.corr("Q006_VALOR", "NU_NOTA_MT")
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao calcular correlação em {year}: {e}")
+                corr = None
+
     correlacoes.append((year, corr))
-df_corr = spark.createDataFrame(correlacoes, ["ANO", "CORR_Q006_MT"])
+
+from pyspark.sql.types import IntegerType, DoubleType, StructType, StructField
+
+schema_corr = StructType([
+    StructField("ANO", IntegerType(), False),
+    StructField("CORR_Q006_MT", DoubleType(), True)
+])
+
+df_corr = spark.createDataFrame(correlacoes, schema=schema_corr)
 
 # 3. Média por tipo de escola
 df_escola = df_all.groupBy("ANO", "TP_ESCOLA").agg(F.avg("NU_NOTA_MT").alias("MEDIA_MT"))
