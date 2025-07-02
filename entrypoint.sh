@@ -2,7 +2,7 @@
 set -e
 
 echo "⏳ Aguardando o HDFS responder em hadoop-namenode:8020..."
-until nc -z hadoop-namenode 8020; do
+until nc -z namenode 8020; do
   echo "❌ HDFS ainda não está pronto..."
   sleep 5
 done
@@ -15,12 +15,15 @@ hdfs dfs -mkdir -p /user/enem/csv
 hdfs dfs -mkdir -p /user/enem/parquet
 hdfs dfs -mkdir -p /user/enem/resultados
 hdfs dfs -mkdir -p /user/enem/csv_raw/2020
+hdfs dfs -mkdir -p /user/enem/csv_raw/2021
 
 # Permissões
 hdfs dfs -chmod -R 777 /user/enem
 hdfs dfs -chmod -R 777 /user/enem/csv_raw/2020
+hdfs dfs -chmod -R 777 /user/enem/csv_raw/2021
 
 hdfs dfs -chmod -R 777 /user/enem/csv_raw/2020
+hdfs dfs -chmod -R 777 /user/enem/csv_raw/2021
 
 # Limpeza de execuções anteriores (idempotente)
 hdfs dfs -rm -r -f /user/enem/csv_raw/2020/MICRODADOS_ENEM_2020.csv || true

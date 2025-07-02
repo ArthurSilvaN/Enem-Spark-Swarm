@@ -1,79 +1,75 @@
-version: "3.9"
+# stack.yml - Infraestrutura Big Data com Spark + HDFS no Docker Swarm
+
+version: '3.8'
 
 services:
+
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    environment:
+      - CLUSTER_NAME=enem-cluster
+      - HDFS_CONF_dfs_permissions=false
+    ports:
+      - "9870:9870"   # Web UI
+      - "9000:9000"   # RPC
+      - "8020:8020"   # HDFS URI
+    volumes:
+      - hdfs-namenode:/hadoop/dfs/name
+    networks:
+      - hadoop
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    environment:
+      - CLUSTER_NAME=enem-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    volumes:
+      - hdfs-datanode:/hadoop/dfs/data
+    networks:
+      - hadoop
+    depends_on:
+      - namenode
 
   spark-master:
     image: bitnami/spark:latest
     environment:
       - SPARK_MODE=master
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - HADOOP_USER_NAME=root
+      - SPARK_RPC_AUTHENTICATION=no
+      - SPARK_RPC_ENCRYPTION=no
     ports:
-      - "8080:8080"
-      - "7077:7077"
-    deploy:
-      placement:
-        constraints: [node.role == manager]
+      - "8080:8080"   # Web UI
+      - "7077:7077"   # Spark master
     networks:
       - hadoop
+    depends_on:
+      - namenode
 
   spark-worker:
     image: bitnami/spark:latest
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - HADOOP_USER_NAME=root
-    deploy:
-      mode: global
     networks:
       - hadoop
-
-  hadoop-namenode:
-    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    environment:
-      - CLUSTER_NAME=enem-cluster
-      - HDFS_CONF_dfs_permissions=false
-    volumes:
-      - hdfs-namenode:/hadoop/dfs/name
-    ports:
-      - "9870:9870"  # Web UI
-      - "8020:8020"  # RPC
-    networks:
-      - hadoop
-
-  hadoop-datanode:
-    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    environment:
-      - CLUSTER_NAME=enem-cluster
-      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:8020
-      - HDFS_CONF_dfs_datanode_address=0.0.0.0:9866
-      - HDFS_CONF_dfs_datanode_http_address=0.0.0.0:9864
-      - HDFS_CONF_dfs_datanode_ipc_address=0.0.0.0:9867
-      - HDFS_CONF_dfs_permissions=false
-      - HDFS_CONF_dfs_data_dir=file:///hadoop/dfs/data
-    volumes:
-      - hdfs-datanode:/hadoop/dfs/data
-    deploy:
-      mode: global
-    networks:
-      - hadoop
-
-  spark-job:
-    image: enem-spark-job:latest
-    environment:
-      - HADOOP_USER_NAME=root
-    volumes:
-      - ./data:/data
-      - ./entrypoint.sh:/entrypoint.sh
     depends_on:
       - spark-master
-      - spark-worker
-      - hadoop-namenode
-      - hadoop-datanode
-    command: ["/bin/bash", "/entrypoint.sh"]
+
+  jupyter:
+    image: jupyter/pyspark-notebook:latest
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
     networks:
       - hadoop
+    depends_on:
+      - spark-master
+      - datanode
 
 volumes:
   hdfs-namenode:
@@ -81,4 +77,4 @@ volumes:
 
 networks:
   hadoop:
-    driver: overlay
+    external: true

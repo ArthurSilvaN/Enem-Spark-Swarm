@@ -20,7 +20,7 @@ start_total = time.time()
 
 # Configuração geral
 YEARS = [2020, 2021, 2023]
-HDFS_URI = "hdfs://hadoop-namenode:8020"
+HDFS_URI = "hdfs://namenode:8020"
 LOCAL_PARQUET_BASE = "/data/enem_clean"
 LOCAL_RESULTS_BASE = "/data/enem_results"
 
@@ -30,50 +30,48 @@ def download_and_extract(year):
     local_zip = f"enem{year}.zip"
     extract_dir = f"/data/enem_data/{year}"
 
-    if not os.path.exists(extract_dir):
+    if not os.path.exists(local_zip):
         os.makedirs(extract_dir, exist_ok=True)
 
     logger.info(f"Verificando arquivo {local_zip} para o ano {year}")
     
-    # Encontrar o arquivo CSV
     csv_pattern = os.path.join(extract_dir, "DADOS", "MICRODADOS_ENEM_*.csv")
     csv_files = glob.glob(csv_pattern)
-
-    if not csv_files:
-        raise FileNotFoundError(f"Nenhum MICRODADOS_ENEM encontrado em {csv_pattern}")
-    
     local_csv_path = csv_files[0]
-    logger.info(f"CSV localizado: {local_csv_path}")
-    
     if not os.path.exists(local_csv_path):
-        logger.info(f"Baixando {year} de {url}")
+        if not os.path.exists(local_zip):
+            logger.info(f"Baixando {year} de {url}")
 
-        session = requests.Session()
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
-        session.mount("https://", HTTPAdapter(max_retries=retries))
+            session = requests.Session()
+            retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
+            session.mount("https://", HTTPAdapter(max_retries=retries))
 
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
 
-        try:
-            with session.get(url, stream=True, headers=headers, timeout=60) as r:
-                r.raise_for_status()
-                with open(local_zip, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=1024 * 1024):
-                        if chunk:
-                            f.write(chunk)
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Erro ao baixar {url}: {e}")
-            raise
+            try:
+                with session.get(url, stream=True, headers=headers, timeout=60) as r:
+                    r.raise_for_status()
+                    with open(local_zip, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=1024 * 1024):
+                            if chunk:
+                                f.write(chunk)
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Erro ao baixar {url}: {e}")
+                raise
+        else:
+            logger.info(f"Arquivo {local_zip} já existe, pulando extração.")
+        
         logger.info(f"Extraindo {local_zip}")
         with zipfile.ZipFile(local_zip, 'r') as zip_ref:
             zip_ref.extractall(extract_dir)
+            
+        os.remove(local_zip)
     else:
-        logger.info(f"Arquivo {local_zip} já existe, pulando download.")
-
-
-    #os.remove(local_zip)
+        logger.info(f"Arquivo {local_csv_path} já existe, pulando download e extração.")
+            
+    
 
     # Encontrar o arquivo CSV
     csv_pattern = os.path.join(extract_dir, "DADOS", "MICRODADOS_ENEM_*.csv")
@@ -91,13 +89,13 @@ def download_and_extract(year):
 
     # Copia arquivo local para o HDFS com subprocess (modo simples)
     subprocess.run(["hdfs", "dfs", "-mkdir", "-p", os.path.dirname(hdfs_csv_path)], check=False)
-    subprocess.run(["hdfs", "dfs", "-put", "-f", local_csv_path, hdfs_csv_path], check=True)
-    
-    csv_pattern = os.path.join(extract_dir, "DADOS", "MICRODADOS_ENEM_*.csv")
-    csv_files = glob.glob(csv_pattern)
-    
-    local_csv_path = csv_files[0]
-    logger.info(f"TESTANDO SE TA VENDO O CSV {local_csv_path}")
+    res = subprocess.run(["hdfs", "dfs", "-put", "-f", local_csv_path, hdfs_csv_path], capture_output=True, text=True)
+
+    if res.returncode != 0:
+        logger.error(f"❌ Falha ao enviar CSV para o HDFS:\n{res.stderr}")
+        raise RuntimeError("Erro ao executar hdfs dfs -put")
+    else:
+        logger.info("✅ CSV enviado para o HDFS com sucesso.")
      
     return hdfs_csv_path
 
@@ -162,7 +160,6 @@ for year in YEARS:
     # ETAPA 2 - SALVAR PARQUET LOCAL + HDFS
     local_out = f"{LOCAL_PARQUET_BASE}/{year}"
     hdfs_out = f"{HDFS_URI}/user/enem/parquet/{year}"
-    df.write.mode("overwrite").parquet(local_out)
     df.write.mode("overwrite").parquet(hdfs_out)
 
     df = df.withColumn("ANO", F.lit(year))
@@ -204,7 +201,6 @@ df_faixa = df_all.withColumn("FAIXA_RENDA", F.when(F.col("Q006_VALOR") <= 1000, 
 # ETAPA 4 - SALVAR RESULTADOS
 def salvar(df, nome):
     df.write.mode("overwrite").parquet(f"{HDFS_URI}/user/enem/resultados/{nome}")
-    df.repartition(1).write.option("header", True).csv(f"{LOCAL_RESULTS_BASE}/{nome}", mode="overwrite")
 
 salvar(df_uf, "media_por_uf")
 salvar(df_corr, "correlacao_renda")
@@ -217,3 +213,9 @@ end_total = time.time()
 logger.info("✅ Pipeline finalizado")
 logger.info(f"⏱️ Tempo total de execução: {round(end_total - start_total, 2)}s")
 logger.info(f"📊 Total de registros processados: {total_records}")
+
+spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/media_por_uf").show()
+spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/media_por_escola").show()
+spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/correlacao_renda").show()
+spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/desigualdade_regiao").show()
+spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/media_por_faixa_renda").show()
