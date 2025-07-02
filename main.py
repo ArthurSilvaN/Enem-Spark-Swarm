@@ -5,6 +5,7 @@ import time
 import logging
 import glob
 import subprocess
+import re
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, LongType, IntegerType, StringType, DoubleType
@@ -19,10 +20,47 @@ logger = logging.getLogger("EnemPipeline")
 start_total = time.time()
 
 # Configuração geral
-YEARS = [2020, 2021, 2023]
+YEARS = [2020]
 HDFS_URI = "hdfs://namenode:8020"
 LOCAL_PARQUET_BASE = "/data/enem_clean"
 LOCAL_RESULTS_BASE = "/data/enem_results"
+
+def get_docker_stats():
+    try:
+        result = subprocess.check_output(["docker", "stats", "--no-stream", "--format",
+                                          "{{.Name}};{{.CPUPerc}};{{.MemUsage}}"], text=True)
+        lines = result.strip().split("\n")
+        workers = [l for l in lines if "spark-worker" in l]
+        cpu_total = 0
+        mem_total = 0
+        for w in workers:
+            name, cpu, mem = w.split(";")
+            cpu_val = float(cpu.replace("%", "").strip())
+            mem_val = re.search(r"([\d\.]+)", mem).group(1)
+            mem_unit = "MB" if "MiB" in mem or "MB" in mem else "GiB"
+            mem_val = float(mem_val) * (1 if mem_unit == "MB" else 1024)
+            cpu_total += cpu_val
+            mem_total += mem_val
+        num_workers = len(workers)
+        cpu_avg = cpu_total / num_workers if num_workers else 0
+        mem_avg = mem_total / num_workers if num_workers else 0
+        return num_workers, round(cpu_avg, 2), round(mem_avg, 2)
+    except Exception as e:
+        logger.warning(f"Falha ao obter docker stats: {e}")
+        return 0, 0, 0
+
+def get_metrics():
+    end_total = time.time()
+    num_workers, cpu_avg, mem_avg = get_docker_stats()
+    throughput = round(total_records / (end_total - start_total), 2)
+
+    logger.info("🔍 Métricas de Desempenho:")
+    logger.info(f"📊 Total de registros processados: {total_records}")
+    logger.info(f"🧵 Nº de Workers (Spark): {num_workers}")
+    logger.info(f"⏱️ Tempo total de execução: {round(end_total - start_total, 2)}s")
+    logger.info(f"🚀 Throughput total: {throughput} linhas/s")
+    logger.info(f"💻 CPU média por worker: {cpu_avg}%")
+    logger.info(f"🧠 RAM média por worker: {mem_avg} MB")
 
 # Função de download + unzip
 def download_and_extract(year):
@@ -177,6 +215,10 @@ for year in YEARS:
 
     # ETAPA 1 - DOWNLOAD E LEITURA
     hdfs_csv_path = download_and_extract(year)
+    
+    logger.info("✅ Metricas Parciais de Download e Extração:")
+    get_metrics()
+    
     logger.info(f"Lendo CSV via HDFS: {hdfs_csv_path}")
     df = spark.read.csv(f"{HDFS_URI}{hdfs_csv_path}", sep=";", header=True, encoding="ISO-8859-1", schema=schema)
 
@@ -195,6 +237,9 @@ for year in YEARS:
     df_all = df_all.unionByName(df) if df_all else df
 
     logger.info(f"Tempo total {year}: {round(time.time() - t0, 2)} segundos")
+    
+    logger.info("✅ Metricas Parciais de Transformação:")
+    get_metrics()
 
 # ETAPA 3 - ANÁLISES COMPLEXAS
 logger.info("Executando análises...")
@@ -260,14 +305,15 @@ salvar(df_escola, "media_por_escola")
 salvar(df_regiao, "desigualdade_regiao")
 salvar(df_faixa, "media_por_faixa_renda")
 
-# ETAPA FINAL - MÉTRICAS
-end_total = time.time()
-logger.info("✅ Pipeline finalizado")
-logger.info(f"⏱️ Tempo total de execução: {round(end_total - start_total, 2)}s")
-logger.info(f"📊 Total de registros processados: {total_records}")
 
 spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/media_por_uf").show()
 spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/media_por_escola").show()
 spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/correlacao_renda").show()
 spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/desigualdade_regiao").show()
 spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/media_por_faixa_renda").show()
+    
+# ETAPA FINAL - MÉTRICAS
+
+logger.info("✅ Pipeline finalizado")
+get_metrics()
+

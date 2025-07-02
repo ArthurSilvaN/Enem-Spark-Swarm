@@ -15,6 +15,10 @@ services:
       - ./data:/data
     networks:
       - hadoop
+    deploy:
+      resources:
+        limits:
+          memory: 2g
 
   spark-worker:
     image: bitnami/spark:latest
@@ -28,6 +32,10 @@ services:
       - spark-master
     networks:
       - hadoop
+    deploy:
+      resources:
+        limits:
+          memory: 3g
 
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
@@ -55,6 +63,10 @@ services:
       - namenode
     networks:
       - hadoop
+    deploy:
+      resources:
+        limits:
+          memory: 2g
 
   spark-job:
     image: enem-spark-job:latest
@@ -63,6 +75,7 @@ services:
     volumes:
       - ./data:/data
       - ./entrypoint.sh:/entrypoint.sh
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - spark-master
       - spark-worker

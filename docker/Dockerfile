@@ -14,7 +14,7 @@ RUN echo "net.ipv6.conf.all.disable_ipv6 = 1" >> /etc/sysctl.conf && \
 
 # Instala dependências do sistema e Python
 RUN apt-get update && \
-    apt-get install -y curl unzip python3-pip netcat-openbsd wget && \
+    apt-get install -y curl unzip python3-pip netcat-openbsd docker.io wget && \
     pip install --upgrade pip && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
