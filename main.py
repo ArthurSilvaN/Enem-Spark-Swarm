@@ -11,6 +11,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, LongType, IntegerType, StringType, DoubleType
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+from pyspark.sql.functions import regexp_replace, col
 
 # Logger
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +21,7 @@ logger = logging.getLogger("EnemPipeline")
 start_total = time.time()
 
 # Configuração geral
-YEARS = [2020]
+YEARS = [2020, 2021, 2023]
 HDFS_URI = "hdfs://namenode:8020"
 LOCAL_PARQUET_BASE = "/data/enem_clean"
 LOCAL_RESULTS_BASE = "/data/enem_results"
@@ -129,6 +130,43 @@ def download_and_extract(year):
 
     return hdfs_csv_path
 
+def normalizar_notas(df):
+    colunas_numericas = ["NU_NOTA_CN", "NU_NOTA_CH", "NU_NOTA_LC", "NU_NOTA_MT"]
+    for coluna in colunas_numericas:
+        df = df.withColumn(coluna, regexp_replace(col(coluna), '"', ''))
+        df = df.withColumn(coluna, regexp_replace(col(coluna), ',', '.'))
+        df = df.withColumn(coluna, col(coluna).cast("double"))
+    return df
+
+def limpar_dados(df):
+    """Aplica limpeza e normalização aos dados do ENEM."""
+    logger.info("🧹 Iniciando limpeza de dados...")
+
+    colunas_utilizadas = [
+    "NU_INSCRICAO", "NU_ANO", "SG_UF_PROVA", "TP_ESCOLA", "Q006",
+    "NU_NOTA_CN", "NU_NOTA_CH", "NU_NOTA_LC", "NU_NOTA_MT"
+]
+
+    df = df.select(*colunas_utilizadas)
+
+    def limpar_valores(col):
+        return F.when(F.col(col).rlike(r"^(99999|\s*|\.)$"), None).otherwise(F.col(col))
+
+    df = df.withColumn("Q006", limpar_valores("Q006"))
+
+    df = df.withColumn("Q006_VALOR", renda_valor(F.col("Q006")))
+
+    df = df.dropna(subset=["NU_NOTA_MT", "Q006_VALOR", "NU_INSCRICAO", "SG_UF_PROVA"])
+
+    df = df.filter((F.col("NU_NOTA_MT") >= 0) & (F.col("NU_NOTA_MT") <= 1000))
+
+    df = df.dropDuplicates(["NU_INSCRICAO", "NU_ANO"])
+
+    df = df.withColumn("REGIAO", uf_regiao(F.col("SG_UF_PROVA")))
+
+    logger.info("✅ Limpeza concluída")
+    return df
+
 
 def mkdirs_hierarchy(path_str):
     """Cria todos os diretórios pai no HDFS usando API Hadoop"""
@@ -182,8 +220,12 @@ schema = StructType([
     StructField("SG_UF_PROVA", StringType(), True),
     StructField("TP_ESCOLA", IntegerType(), True),
     StructField("Q006", StringType(), True),
+    StructField("NU_NOTA_CN", DoubleType(), True),
+    StructField("NU_NOTA_CH", DoubleType(), True),
+    StructField("NU_NOTA_LC", DoubleType(), True),
     StructField("NU_NOTA_MT", DoubleType(), True)
 ])
+
 
 # Mapas auxiliares
 renda_map = {
@@ -220,11 +262,17 @@ for year in YEARS:
     get_metrics()
     
     logger.info(f"Lendo CSV via HDFS: {hdfs_csv_path}")
-    df = spark.read.csv(f"{HDFS_URI}{hdfs_csv_path}", sep=";", header=True, encoding="ISO-8859-1", schema=schema)
+    df = spark.read.csv(
+    f"{HDFS_URI}{hdfs_csv_path}",
+    sep=";",
+    header=True,
+    encoding="ISO-8859-1",
+    inferSchema=False
+)
 
+    df = normalizar_notas(df)
+    df = limpar_dados(df)
     df.repartition(10).write.mode("overwrite").option("header", True).csv(f"{HDFS_URI}/user/enem/csv/{year}")
-    df = df.withColumn("Q006_VALOR", renda_valor(F.col("Q006")))
-    df = df.withColumn("REGIAO", uf_regiao(F.col("SG_UF_PROVA"))).dropna(subset=["NU_NOTA_MT", "Q006_VALOR"])
 
     total_records += df.count()
 
@@ -245,7 +293,13 @@ for year in YEARS:
 logger.info("Executando análises...")
 
 # 1. Média por UF/ano
-df_uf = df_all.groupBy("ANO", "SG_UF_PROVA").agg(F.avg("NU_NOTA_MT").alias("MEDIA_MT"))
+df_uf = df_all.withColumn(
+    "MEDIA_GERAL",
+    (F.col("NU_NOTA_CN") + F.col("NU_NOTA_CH") + F.col("NU_NOTA_LC") + F.col("NU_NOTA_MT")) / 4
+).groupBy("ANO", "SG_UF_PROVA").agg(
+    F.avg("MEDIA_GERAL").alias("MEDIA_GERAL_UF")
+)
+
 
 # 2. Correlação renda vs nota por ano (com verificação)
 correlacoes = []

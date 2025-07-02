@@ -90,9 +90,9 @@ Spark-Worker e Datanode definem a quantidade de nós com spark-work e datanode
 
 | Configuração       | Tempo (s) | Registros | Throughput | CPU (%) | RAM (MB) |
 |--------------------|-----------|-----------|------------|---------|----------|
-| 1W / 1D            | 199.23    | 13.1M     | 65801.7    | 52%     | 920 MB   |
-| 2W / 2D            | 211.87    | 13.1M     | 61855.3    | 39%     | 880 MB   |
-| 3W / 2D            | 224.67    | 13.1M     | 58339.7    | 28%     | 770 MB   |
+| 1W / 1D            | 364.41    | 7535711   | 20679.14   | 0.64%   | 3025.92  |
+| 2W / 1D            | 453.50    | 7535711   | 16616.94   | 0.17%   | 2914.3   |
+| 2W / 2D            | 224.67    | 13.1M     | 58339.7    | 28%     | 770 MB   |
 
 ## 7. Discussion and conclusions
 
