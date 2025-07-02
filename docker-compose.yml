@@ -2,7 +2,7 @@ version: "3.7"
 
 services:
   spark-master:
-    image: bitnami/spark:latest
+    image: bitnami/spark:3.5.0
     environment:
       - SPARK_MODE=master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
@@ -21,7 +21,7 @@ services:
           memory: 2g
 
   spark-worker:
-    image: bitnami/spark:latest
+    image: bitnami/spark:3.5.0
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -84,6 +84,21 @@ services:
     command: ["/bin/bash", "/entrypoint.sh"]
     networks:
       - hadoop
+  
+  jupyter:
+    image: jupyter/pyspark-notebook:latest
+    container_name: jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    networks:
+      - hadoop
+    depends_on:
+      - spark-master
+      - datanode
 
 volumes:
   namenode_data:
