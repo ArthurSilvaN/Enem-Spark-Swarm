@@ -26,43 +26,93 @@ HDFS_URI = "hdfs://namenode:8020"
 LOCAL_PARQUET_BASE = "/data/enem_clean"
 LOCAL_RESULTS_BASE = "/data/enem_results"
 
-def get_docker_stats():
+def get_spark_worker_metrics():
+    """
+    Coleta métricas dos workers Spark via /json (modo compatível com campos em lowercase)
+    - CPU total e por worker
+    - RAM média
+    - Threads estimadas com base nos executores Spark
+    """
     try:
-        result = subprocess.check_output(["docker", "stats", "--no-stream", "--format",
-                                          "{{.Name}};{{.CPUPerc}};{{.MemUsage}}"], text=True)
-        lines = result.strip().split("\n")
-        workers = [l for l in lines if "spark-worker" in l]
-        cpu_total = 0
-        mem_total = 0
-        for w in workers:
-            name, cpu, mem = w.split(";")
-            cpu_val = float(cpu.replace("%", "").strip())
-            mem_val = re.search(r"([\d\.]+)", mem).group(1)
-            mem_unit = "MB" if "MiB" in mem or "MB" in mem else "GiB"
-            mem_val = float(mem_val) * (1 if mem_unit == "MB" else 1024)
-            cpu_total += cpu_val
-            mem_total += mem_val
+        response = requests.get("http://spark-master:8080/json", timeout=5)
+        data = response.json()
+
+        workers = data.get("workers", [])
         num_workers = len(workers)
-        cpu_avg = cpu_total / num_workers if num_workers else 0
-        mem_avg = mem_total / num_workers if num_workers else 0
-        return num_workers, round(cpu_avg, 2), round(mem_avg, 2)
+        if num_workers == 0:
+            return 0, 0, 0, 0, 0
+
+        total_cores = sum(w.get("cores", 0) for w in workers)
+        used_cores = sum(w.get("coresused", 0) for w in workers)
+        total_mem = sum(w.get("memoryused", 0) for w in workers)  # em MB já
+
+        avg_mem = total_mem / num_workers
+        avg_cpu_total = (used_cores / total_cores * 100) if total_cores else 0
+        avg_cpu_per_worker = avg_cpu_total / num_workers if num_workers else 0
+
+        # Threads estimadas: número de executores (sem o driver)
+        executor_status = spark.sparkContext._jsc.sc().getExecutorMemoryStatus()
+        total_threads = executor_status.keySet().size() - 1
+
+        return num_workers, round(avg_mem, 2), round(avg_cpu_total, 2), round(avg_cpu_per_worker, 2), total_threads
+
     except Exception as e:
-        logger.warning(f"Falha ao obter docker stats: {e}")
-        return 0, 0, 0
+        logger.warning(f"⚠️ Falha ao coletar métricas do Spark Master: {e}")
+        return 0, 0, 0, 0, 0
+    
+    
+def get_executor_threads_estimate():
+    try:
+        response = requests.get("http://spark-master:8080/json", timeout=5)
+        data = response.json()
+        active_apps = data.get("activeapps", [])
+        if not active_apps:
+            return 0
+
+        # Obter quantos cores a app está usando
+        cores_used = active_apps[0].get("cores", 0)
+        workers = data.get("workers", [])
+        num_workers = len(workers)
+
+        return cores_used, cores_used / num_workers if num_workers else 0
+
+    except Exception as e:
+        logger.warning(f"⚠️ Falha ao estimar threads: {e}")
+        return 0, 0
+
 
 def get_metrics():
     end_total = time.time()
-    num_workers, cpu_avg, mem_avg = get_docker_stats()
+    num_workers, mem_avg, cpu_avg_total, cpu_avg_per_worker, avg_threads = get_spark_worker_metrics()
     throughput = round(total_records / (end_total - start_total), 2)
+
+    cores_total, avg_threads = get_executor_threads_estimate()
 
     logger.info("🔍 Métricas de Desempenho:")
     logger.info(f"📊 Total de registros processados: {total_records}")
     logger.info(f"🧵 Nº de Workers (Spark): {num_workers}")
     logger.info(f"⏱️ Tempo total de execução: {round(end_total - start_total, 2)}s")
     logger.info(f"🚀 Throughput total: {throughput} linhas/s")
-    logger.info(f"💻 CPU média por worker: {cpu_avg}%")
+    logger.info(f"💻 CPU total utilizada: {cpu_avg_total}%")
+    logger.info(f"💻 CPU média por worker: {cpu_avg_per_worker}%")
     logger.info(f"🧠 RAM média por worker: {mem_avg} MB")
+    logger.info(f"🧵 Threads (cores) utilizados: {cores_total}")
+    logger.info(f"🧵 Threads médias por worker: {avg_threads}")
+    
+def get_worker_cores():
+    try:
+        response = requests.get("http://spark-master:8080/json", timeout=5)
+        data = response.json()
+        workers = data.get("workers", [])
+        if not workers:
+            return 2  # valor seguro padrão
+        total_threads = sum(w.get("cores", 0) for w in workers)
+        return total_threads
+    except Exception as e:
+        logger.warning(f"⚠️ Erro ao obter número de threads: {e}")
+        return 2
 
+    
 # Função de download + unzip
 def download_and_extract(year):
     url = f"https://download.inep.gov.br/microdados/microdados_enem_{year}.zip"
@@ -207,7 +257,9 @@ def copy_to_hdfs(local_path, hdfs_path):
 spark = SparkSession.builder \
     .appName("ENEM Pipeline") \
     .master("spark://spark-master:7077") \
-    .config("spark.executor.memory", "2g") \
+    .config("spark.executor.instances", "2") \
+    .config("spark.executor.cores", "3") \
+    .config("spark.executor.memory", "4g") \
     .config("spark.driver.memory", "2g") \
     .config("spark.hadoop.fs.defaultFS", "hdfs://namenode:8020") \
     .getOrCreate()
@@ -252,6 +304,10 @@ def uf_regiao(uf): return state_region.get(uf, "Indefinido")
 df_all = None
 total_records = 0
 
+threads = get_worker_cores()
+num_partitions = threads * 3
+logger.info(f"⚙️ Configurando {num_partitions} partitions para paralelismo com base em {threads} threads")
+
 for year in YEARS:
     t0 = time.time()
 
@@ -272,7 +328,8 @@ for year in YEARS:
 
     df = normalizar_notas(df)
     df = limpar_dados(df)
-    df.repartition(10).write.mode("overwrite").option("header", True).csv(f"{HDFS_URI}/user/enem/csv/{year}")
+    
+    df.repartition(num_partitions).write.mode("overwrite").option("header", True).csv(f"{HDFS_URI}/user/enem/csv/{year}")
 
     total_records += df.count()
 

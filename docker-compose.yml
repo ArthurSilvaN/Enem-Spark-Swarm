@@ -15,10 +15,6 @@ services:
       - ./data:/data
     networks:
       - hadoop
-    deploy:
-      resources:
-        limits:
-          memory: 2g
 
   spark-worker:
     image: bitnami/spark:latest
@@ -26,16 +22,15 @@ services:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
       - HADOOP_USER_NAME=root
+      - SPARK_WORKER_CORES=6
+      - SPARK_WORKER_MEMORY=8g
+
     volumes:
       - ./data:/data
     depends_on:
       - spark-master
     networks:
       - hadoop
-    deploy:
-      resources:
-        limits:
-          memory: 3g
 
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
@@ -63,10 +58,6 @@ services:
       - namenode
     networks:
       - hadoop
-    deploy:
-      resources:
-        limits:
-          memory: 2g
 
   spark-job:
     image: enem-spark-job:latest

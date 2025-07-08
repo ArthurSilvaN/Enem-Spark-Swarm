@@ -79,7 +79,9 @@ Spark-Worker e Datanode definem a quantidade de nós com spark-work e datanode
 
 ### 6.1 Experimental environment
 
-> VM com 6 vCPUs, 12GB RAM, Ubuntu 22.04, Docker 24.0.5
+> NumberOfCores - 6 
+> NumberOfLogicalProcessors - 12
+> RAM - 16GM
 
 ### 6.2 What did you test?
 
@@ -88,17 +90,79 @@ Spark-Worker e Datanode definem a quantidade de nós com spark-work e datanode
 
 ### 6.3 Results
 
-| Configuração       | Tempo (s) | Registros | Throughput | CPU (%) | RAM (MB) |
-|--------------------|-----------|-----------|------------|---------|----------|
-| 1W / 1D            | 364.41    | 7535711   | 20679.14   | 0.64%   | 3025.92  |
-| 2W / 1D            | 453.50    | 7535711   | 16616.94   | 0.17%   | 2914.3   |
-| 2W / 2D            |         Falha de processamento                          |
+#### Testes por configuração de workers/datanodes
+
+| Configuração | Tempo (s) | Registros    | Throughput (linhas/s) | CPU Total (%) | RAM média (MB) | Threads por worker |
+|--------------|-----------|--------------|------------------------|----------------|----------------|---------------------|
+| 1W / 1D      | 415.66    | 7.535.711    | 18.129,37              | 50.0%          | 4096           | 3.0                 |
+| 2W / 1D      | 362.80    | 7.535.711    | 20.770,75              | 50.0%          | 4096           | 3.0                 |
+| 2W / 2D      | 365.82    | 7.535.711    | 20.599,35              | 50.0%          | 4096           | 3.0                 |
+
+A partir de 3 workers tivemos problema de RAM para a execução do Job
+
+#### Análise realizadas
+
+As seguintes análises estatísticas foram realizadas sobre os dados do ENEM (anos 2020, 2021 e 2023), com persistência dos resultados em HDFS:
+
+#### 📊 1. Média Geral por UF
+
+Exemplo de destaques (2020):
+- São Paulo (SP): **541,20**
+- Minas Gerais (MG): **534,08**
+- Acre (AC): **480,82**
+- Amapá (AP): **476,80**
+
+#### 🏫 2. Média por Tipo de Escola (`TP_ESCOLA`) (2020)
+
+| Tipo de Escola | Descrição                  | Média ENEM |
+|----------------|----------------------------|------------|
+| 1              | Pública                     | 520.03     |
+| 2              | Privada                     | 499.52     |
+| 3              | Exterior ou outros          | 610.63     |
+
+> Observa-se desempenho significativamente maior entre estudantes oriundos de escolas privadas e do exterior.
+
+#### 💰 3. Correlação entre Renda Familiar (`Q006`) e Nota de Matemática
+
+| Ano  | Correlação (Pearson) |
+|------|----------------------|
+| 2020 | 0.3945               |
+| 2021 | 0.3745               |
+| 2023 | 0.3824               |
+
+> A correlação positiva mostra que, quanto maior a renda, maior tende a ser a nota em matemática.
+
+#### 🌎 4. Desigualdade Regional
+
+| Região       | Média     | Desvio Padrão | N° Estudantes |
+|--------------|-----------|----------------|----------------|
+| Sudeste      | 559.36    | 123.15         | 2.531.820      |
+| Sul          | 550.79    | 119.85         | 813.382        |
+| Centro-Oeste | 528.26    | 121.08         | 627.912        |
+| Nordeste     | 508.94    | 115.88         | 2.744.535      |
+| Norte        | 487.11    | 103.82         | 818.062        |
+
+> As regiões Norte e Nordeste apresentam as menores médias e menor dispersão.
+
+#### 📈 5. Média por Faixa de Renda
+
+| Faixa de Renda | Média ENEM |
+|----------------|------------|
+| Até 1k         | 490.49     |
+| 1k–3k          | 544.49     |
+| 3k–6k          | 598.89     |
+| Acima de 6k    | 650.86     |
+
+> Existe uma clara progressão positiva entre renda familiar e desempenho em matemática.
+
+---
+
+Todos os resultados foram salvos no HDFS na camada `resultados`, em formato Parquet
 
 ## 7. Discussion and conclusions
 
 - ✅ Pipeline robusto e escalável
 - ⚠️ Desafios com permissões HDFS e alocação de memória
-- 📉 Overhead ao aumentar workers (troca entre nós)
 
 ## 8. References and external resources
 
