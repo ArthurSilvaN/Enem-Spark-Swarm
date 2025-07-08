@@ -116,9 +116,9 @@ Exemplo de destaques (2020):
 
 | Tipo de Escola | Descrição                  | Média ENEM |
 |----------------|----------------------------|------------|
-| 1              | Pública                     | 520.03     |
-| 2              | Privada                     | 499.52     |
-| 3              | Exterior ou outros          | 610.63     |
+| 1              | Não respondeu              | 520.03     |
+| 2              | Pública                    | 499.52     |
+| 3              | Privada                    | 610.63     |
 
 > Observa-se desempenho significativamente maior entre estudantes oriundos de escolas privadas e do exterior.
 
