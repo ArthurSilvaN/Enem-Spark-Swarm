@@ -127,6 +127,7 @@ def download_and_extract(year):
 
     # Etapa 1: procurar CSV local já extraído
     csv_files = glob.glob(csv_pattern, recursive=True)
+    logger.info(f"🔍 Procurando CSVs locais com padrão: {csv_pattern}")
     if csv_files:
         local_csv_path = csv_files[0]
         logger.info(f"📂 CSV local encontrado: {local_csv_path}")

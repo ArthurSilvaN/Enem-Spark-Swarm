@@ -12,7 +12,7 @@ services:
       - "8080:8080"
       - "7077:7077"
     volumes:
-      - ./data:/data
+      - ../data:/data
     networks:
       - hadoop
 
@@ -26,7 +26,7 @@ services:
       - SPARK_WORKER_MEMORY=8g
 
     volumes:
-      - ./data:/data
+      - ../data:/data
     depends_on:
       - spark-master
     networks:
@@ -64,8 +64,8 @@ services:
     environment:
       - HADOOP_USER_NAME=root
     volumes:
-      - ./data:/data
-      - ./misc/entrypoint.sh:/entrypoint.sh
+      - ../data:/data
+      - ./entrypoint.sh:/entrypoint.sh
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - spark-master
