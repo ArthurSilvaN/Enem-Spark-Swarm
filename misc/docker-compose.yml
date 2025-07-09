@@ -65,7 +65,7 @@ services:
       - HADOOP_USER_NAME=root
     volumes:
       - ./data:/data
-      - ./entrypoint.sh:/entrypoint.sh
+      - ./misc/entrypoint.sh:/entrypoint.sh
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - spark-master

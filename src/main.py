@@ -12,6 +12,7 @@ from pyspark.sql.types import StructType, StructField, LongType, IntegerType, St
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from pyspark.sql.functions import regexp_replace, col
+from pyspark.sql.types import IntegerType, DoubleType, StructType, StructField
 
 # Logger
 logging.basicConfig(level=logging.INFO)
@@ -380,8 +381,6 @@ for year in YEARS:
 
     correlacoes.append((year, corr))
 
-from pyspark.sql.types import IntegerType, DoubleType, StructType, StructField
-
 schema_corr = StructType([
     StructField("ANO", IntegerType(), False),
     StructField("CORR_Q006_MT", DoubleType(), True)
@@ -427,4 +426,3 @@ spark.read.parquet(f"{HDFS_URI}/user/enem/resultados/media_por_faixa_renda").sho
 
 logger.info("✅ Pipeline finalizado")
 get_metrics()
-
