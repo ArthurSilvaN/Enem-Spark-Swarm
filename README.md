@@ -41,7 +41,9 @@ unzip microdados_enem_2023.zip -d data/enem_data/2023/
 ```bash
 docker build -t enem-spark-job -f docker/Dockerfile .
 
-docker-compose up --scale spark-worker=2 --scale datanode=1 -d 
+docker-compose up --scale spark-worker=2 --scale datanode=1 -d
+
+docker-compose down -v
 ```
 Spark-Worker e Datanode definem a quantidade de nós com spark-work e datanode
 

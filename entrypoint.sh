@@ -7,29 +7,7 @@ until nc -z namenode 8020; do
   sleep 5
 done
 
-echo "✅ HDFS disponível. Preparando diretórios..."
-
-# Criação das pastas
-hdfs dfs -mkdir -p /user
-hdfs dfs -mkdir -p /user/enem
-hdfs dfs -mkdir -p /user/enem/csv_raw
-hdfs dfs -mkdir -p /user/enem/csv_raw/2020
-echo "Criando diretório para os dados do ENEM 2020"
-hdfs dfs -mkdir -p /user/enem/csv_raw/2021
-echo "Criando diretório para os dados do ENEM 2021"
-
-hdfs dfs -mkdir -p /user/enem/csv
-hdfs dfs -mkdir -p /user/enem/parquet
-hdfs dfs -mkdir -p /user/enem/resultados
-
-
-# Permissões
-hdfs dfs -chmod -R 777 /user/enem
-
-# Limpeza de execuções anteriores (idempotente)
-hdfs dfs -rm -r -f /user/enem/csv_raw/2020/MICRODADOS_ENEM_2020.csv || true
-hdfs dfs -rm -r -f /user/enem/csv_raw/2021/MICRODADOS_ENEM_2021.csv || true
-hdfs dfs -rm -r -f /user/enem/csv_raw/2023/MICRODADOS_ENEM_2023.csv || true
+echo "✅ HDFS disponível. Executando comandos de configuração..."
 
 export HADOOP_USER_NAME=root
 
