@@ -36,13 +36,55 @@ case $choice in
 esac
 
 echo ""
+echo "Configuração de escala do cluster:"
+echo "1) Padrão (2 workers Spark, 1 datanode)"
+echo "2) Configuração customizada"
+echo ""
+read -p "Digite sua escolha (1 ou 2): " scale_choice
+
+case $scale_choice in
+    1)
+        SPARK_WORKERS=2
+        DATANODES=1
+        echo "Usando configuração padrão: 2 workers Spark, 1 datanode"
+        ;;
+    2)
+        echo ""
+        read -p "Número de workers Spark (1-4): " workers_input
+        read -p "Número de datanodes (1-3): " datanodes_input
+        
+        # Validate inputs
+        if ! [[ "$workers_input" =~ ^[1-4]$ ]]; then
+            echo "❌ Número de workers deve ser entre 1 e 4. Usando padrão (2)."
+            SPARK_WORKERS=2
+        else
+            SPARK_WORKERS=$workers_input
+        fi
+        
+        if ! [[ "$datanodes_input" =~ ^[1-3]$ ]]; then
+            echo "❌ Número de datanodes deve ser entre 1 e 3. Usando padrão (1)."
+            DATANODES=1
+        else
+            DATANODES=$datanodes_input
+        fi
+        
+        echo "Configuração: $SPARK_WORKERS workers Spark, $DATANODES datanodes"
+        ;;
+    *)
+        echo "❌ Escolha inválida. Usando configuração padrão."
+        SPARK_WORKERS=2
+        DATANODES=1
+        ;;
+esac
+
+echo ""
 echo "Building Docker image..."
 docker build -t enem-spark-job -f misc/Dockerfile .
 
 echo ""
 echo "Starting services with Docker Compose..."
 cd misc
-docker-compose up --scale spark-worker=2 --scale datanode=1 -d
+docker-compose up --scale spark-worker=$SPARK_WORKERS --scale datanode=$DATANODES -d
 
 echo ""
 echo "Pipeline started successfully!"

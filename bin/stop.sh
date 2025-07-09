@@ -17,3 +17,4 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 echo "All services stopped successfully!"
+cd ..

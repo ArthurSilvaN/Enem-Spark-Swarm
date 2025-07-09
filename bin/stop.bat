@@ -13,3 +13,4 @@ if /i "%cleanup%"=="y" (
 )
 
 echo ✅ All services stopped successfully!
+cd ..
