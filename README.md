@@ -188,8 +188,6 @@ Este projeto avalia três principais cargas de trabalho no contexto de processam
 
 ## 6. Experiments and results
 
-## 6. Experiments and results
-
 ### 6.1 Experimental environment
 
 Os experimentos foram executados em um ambiente com as seguintes especificações:
@@ -260,7 +258,7 @@ A partir de 3 workers tivemos problema de RAM para a execução do Job
 
 O pipeline processou com sucesso 7,5+ milhões de registros do ENEM, gerando insights educacionais abrangentes:
 
-**📊 1. Performance Acadêmica por Estado (Amostra 2020):**
+**1. Performance Acadêmica por Estado (Amostra 2020):**
 - São Paulo (SP): 541,20 pontos (maior média)
 - Minas Gerais (MG): 534,08 pontos  
 - Acre (AC): 480,82 pontos
@@ -268,7 +266,7 @@ O pipeline processou com sucesso 7,5+ milhões de registros do ENEM, gerando ins
 
 *Diferença de 64,4 pontos entre estados extremos revela disparidades significativas.*
 
-**🏫 2. Performance por Tipo de Escola (2020):**
+**2. Performance por Tipo de Escola (2020):**
 | Tipo | Descrição    | Média ENEM |
 |------|-------------|------------|
 | 2    | Pública     | 499,52     |
@@ -276,7 +274,7 @@ O pipeline processou com sucesso 7,5+ milhões de registros do ENEM, gerando ins
 
 *Vantagem de 111 pontos para escolas privadas demonstra desigualdade no sistema educacional.*
 
-**💰 3. Correlação Renda vs Matemática:**
+**3. Correlação Renda vs Matemática:**
 | Ano  | Correlação Pearson |
 |------|--------------------|
 | 2020 | 0,3945             |
@@ -285,7 +283,7 @@ O pipeline processou com sucesso 7,5+ milhões de registros do ENEM, gerando ins
 
 *Correlação positiva consistente (~0,38) confirma impacto da renda no desempenho.*
 
-**🌎 4. Desigualdade Regional:**
+**4. Desigualdade Regional:**
 | Região      | Média  | Desvio | Estudantes |
 |-------------|--------|--------|------------|
 | Sudeste     | 559,36 | 123,15 | 2.531.820  |
@@ -297,7 +295,7 @@ O pipeline processou com sucesso 7,5+ milhões de registros do ENEM, gerando ins
 
 ### O que funcionou bem:
 
-**✅ Implementação técnica bem-sucedida:**
+**Implementação técnica bem-sucedida:**
 - Pipeline robusto e escalável processando 7,5+ milhões de registros
 - Aquisição automática de dados de fontes externas
 - Processamento distribuído eficiente com Apache Spark e HDFS
@@ -305,21 +303,21 @@ O pipeline processou com sucesso 7,5+ milhões de registros do ENEM, gerando ins
 - Coleta de métricas de performance em tempo real
 - Containerização completa garantindo reprodutibilidade
 
-**✅ Insights educacionais relevantes:**
+**Insights educacionais relevantes:**
 - Confirmação quantitativa da correlação entre fatores socioeconômicos e desempenho acadêmico
 - Evidências claras de desigualdades regionais e por tipo de escola
 - Dados que podem subsidiar políticas públicas educacionais
 
 ### Desafios e limitações:
 
-**⚠️ Desafios técnicos encontrados:**
+**Desafios técnicos encontrados:**
 - Complexidades de configuração e permissões do HDFS em ambiente containerizado
 - Limitações de alocação de memória restringindo escalabilidade horizontal
 - Gargalos de I/O de rede durante transferência de datasets grandes
 - Problemas de timing de orquestração de contêineres durante inicialização
 - Dependência de conectividade de internet para download de dados
 
-**⚠️ Limitações do trabalho:**
+**Limitações do trabalho:**
 - Ambiente de teste limitado a uma única máquina (não cluster real)
 - Análises focadas em correlações básicas (sem modelos preditivos avançados)
 - Testes de performance limitados devido ao tempo de execução
