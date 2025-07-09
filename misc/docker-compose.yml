@@ -22,8 +22,8 @@ services:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
       - HADOOP_USER_NAME=root
-      - SPARK_WORKER_CORES=6
-      - SPARK_WORKER_MEMORY=8g
+      - SPARK_WORKER_CORES=3
+      - SPARK_WORKER_MEMORY=4g
 
     volumes:
       - ../data:/data
