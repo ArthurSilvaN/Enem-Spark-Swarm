@@ -6,12 +6,6 @@ ENV HADOOP_HOME=/opt/hadoop
 ENV PATH=$PATH:$HADOOP_HOME/bin
 ENV HADOOP_USER_NAME=root
 
-# Desativa IPv6 permanentemente via sysctl
-RUN echo "net.ipv6.conf.all.disable_ipv6 = 1" >> /etc/sysctl.conf && \
-    echo "net.ipv6.conf.default.disable_ipv6 = 1" >> /etc/sysctl.conf && \
-    echo "net.ipv6.conf.lo.disable_ipv6 = 1" >> /etc/sysctl.conf && \
-    echo "net.ipv6.conf.eth0.disable_ipv6 = 1" >> /etc/sysctl.conf
-
 # Instala dependências do sistema e Python
 RUN apt-get update && \
     apt-get install -y curl unzip python3-pip netcat-openbsd wget && \

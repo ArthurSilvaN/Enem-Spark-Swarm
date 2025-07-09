@@ -27,6 +27,14 @@ HDFS_URI = "hdfs://namenode:8020"
 LOCAL_PARQUET_BASE = "/data/enem_clean"
 LOCAL_RESULTS_BASE = "/data/enem_results"
 
+# Verificar se deve usar dados locais
+USE_LOCAL_DATA = os.getenv('USE_LOCAL_DATA', 'false').lower() == 'true'
+
+if USE_LOCAL_DATA:
+    logger.info(" Modo LOCAL ativado - usando dados de amostra")
+else:
+    logger.info("Modo COMPLETO ativado - baixando dados reais do ENEM")
+
 def get_spark_worker_metrics():
     """
     Coleta métricas dos workers Spark via /json (modo compatível com campos em lowercase)
@@ -302,6 +310,27 @@ def renda_valor(code): return renda_map.get(code, 0)
 @F.udf("string")
 def uf_regiao(uf): return state_region.get(uf, "Indefinido")
 
+def process_local_data(year):
+    """
+    Processa dados locais pré-carregados no container (modo rápido)
+    """
+    local_csv_path = f"/data/enem_data/{year}/DADOS/MICRODADOS_ENEM_{year}.csv"
+    hdfs_csv_path = f"/user/enem/csv_raw/{year}/MICRODADOS_ENEM_{year}.csv"
+    
+    logger.info(f"📂 Verificando dados locais para {year}: {local_csv_path}")
+    
+    if os.path.exists(local_csv_path):
+        logger.info(f"✅ Dados locais encontrados para {year}")
+        # Enviar para HDFS
+        mkdirs_hierarchy(f"/user/enem/csv_raw/{year}")
+        logger.info(f"📤 Enviando dados locais para HDFS: {hdfs_csv_path}")
+        copy_to_hdfs(local_csv_path, hdfs_csv_path)
+        return hdfs_csv_path
+    else:
+        logger.warning(f"⚠️ Dados locais não encontrados para {year} em {local_csv_path}")
+        logger.info("🔄 Voltando para download automático...")
+        return download_and_extract(year)
+
 # Acumulador
 df_all = None
 total_records = 0
@@ -314,7 +343,12 @@ for year in YEARS:
     t0 = time.time()
 
     # ETAPA 1 - DOWNLOAD E LEITURA
-    hdfs_csv_path = download_and_extract(year)
+    if USE_LOCAL_DATA:
+        logger.info(f"📂 Processando dados locais para {year}...")
+        hdfs_csv_path = process_local_data(year)
+    else:
+        logger.info(f"🌐 Baixando dados reais para {year}...")
+        hdfs_csv_path = download_and_extract(year)
     
     logger.info("✅ Metricas Parciais de Download e Extração:")
     get_metrics()

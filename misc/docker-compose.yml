@@ -63,6 +63,7 @@ services:
     image: enem-spark-job:latest
     environment:
       - HADOOP_USER_NAME=root
+      - USE_LOCAL_DATA=${USE_LOCAL_DATA:-false}
     volumes:
       - ../data:/data
       - ./entrypoint.sh:/entrypoint.sh
